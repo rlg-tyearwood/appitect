@@ -1,0 +1,101 @@
+#cloud-config
+hostname: ${hostname}
+manage_etc_hosts: true
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - ufw
+  - fail2ban
+  - jq
+  - unattended-upgrades
+  - postgresql-client
+
+users:
+  - default
+  - name: deploy
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-appitect-hardening.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      PermitRootLogin prohibit-password
+      PasswordAuthentication no
+      PubkeyAuthentication yes
+      KbdInteractiveAuthentication no
+
+  - path: /etc/docker/daemon.json
+    owner: root:root
+    permissions: "0644"
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "20m",
+          "max-file": "5"
+        },
+        "live-restore": true
+      }
+
+  - path: /opt/appitect/edge/Dockerfile.caddy
+    owner: root:root
+    permissions: "0644"
+    encoding: b64
+    content: ${dockerfile_caddy_b64}
+
+  - path: /opt/appitect/edge/docker-compose.yml
+    owner: root:root
+    permissions: "0644"
+    encoding: b64
+    content: ${compose_edge_b64}
+
+  - path: /opt/appitect/edge/Caddyfile
+    owner: root:root
+    permissions: "0644"
+    encoding: b64
+    content: ${caddyfile_b64}
+
+runcmd:
+  - systemctl reload ssh || systemctl reload sshd || true
+  - systemctl enable --now fail2ban
+
+  # Host Firewall (UFW)
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow OpenSSH
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 443/udp
+  - ufw --force enable
+
+  # Install Docker Engine & Compose Plugin
+  - curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  - sh /tmp/get-docker.sh
+  - rm -f /tmp/get-docker.sh
+  - usermod -aG docker deploy
+  - systemctl enable --now docker
+
+  # Create dedicated Docker networks for single-app isolation
+  - docker network inspect vps_edge >/dev/null 2>&1 || docker network create --driver bridge vps_edge
+  - docker network inspect ${internal_network_name} >/dev/null 2>&1 || docker network create --driver bridge ${internal_network_name}
+
+  # Prepare application deployment directories
+  - mkdir -p /opt/apps/${app_slug}
+  - chown -R deploy:deploy /opt/apps /opt/appitect
+
+  # Unattended 1Panel Web UI Installation
+  - curl -fsSL https://resource.1panel.pro/quick_start.sh -o /tmp/install-1panel.sh
+  - PANEL_NON_INTERACTIVE=true PANEL_LANG=en PANEL_INSTALL_DIR=/opt PANEL_PORT=${panel_port} PANEL_ENTRANCE='${panel_entrance}' PANEL_USERNAME='${panel_username}' PANEL_PASSWORD='${panel_password}' PANEL_INSTALL_DOCKER=n PANEL_CONFIGURE_ACCELERATOR=n PANEL_REPLACE_DAEMON_JSON=n bash /tmp/install-1panel.sh
+  - rm -f /tmp/install-1panel.sh
+
+  # Build and launch Caddy + Coraza OWASP WAF
+  - docker compose -f /opt/appitect/edge/docker-compose.yml up -d --build

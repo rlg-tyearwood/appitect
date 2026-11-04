@@ -1,0 +1,45 @@
+{
+	email ${acme_email}
+	order coraza_waf first
+}
+
+(coraza_owasp_waf) {
+	coraza_waf {
+		load_owasp_crs
+		directives `
+			Include @coraza.conf-recommended
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			SecRuleEngine ${waf_mode}
+			SecRequestBodyLimit ${max_body_bytes}
+			SecAction "id:900200,phase:1,nolog,pass,t:none,setvar:tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE"
+		`
+	}
+}
+
+${app_domain} {
+	import coraza_owasp_waf
+
+	request_body {
+		max_size ${max_body_size}
+	}
+
+	encode zstd gzip
+
+	log {
+		output file /var/log/caddy/${app_slug}-access.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+		format json
+	}
+
+	reverse_proxy ${app_upstream_container}:${app_upstream_port}
+}
+%{ if enable_panel_subdomain && panel_domain != "" ~}
+
+${panel_domain} {
+	encode zstd gzip
+	reverse_proxy host.docker.internal:${panel_port}
+}
+%{ endif ~}

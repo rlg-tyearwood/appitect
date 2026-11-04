@@ -1,0 +1,45 @@
+# Reference Docker Compose files for the dedicated application repositories deployed onto an Appitect VPS.
+# Replace `medial` with your `var.app_slug`.
+
+# -----------------------------------------------------------------------------
+# 1. Backend API Repo (/opt/apps/<app_slug>/api/docker-compose.prod.yml)
+# Attached ONLY to `<app_slug>_internal` — completely isolated from Caddy and the public internet.
+# -----------------------------------------------------------------------------
+# services:
+#   medialapi:
+#     image: ghcr.io/<org>/medialapi:latest
+#     container_name: medialapi
+#     restart: unless-stopped
+#     env_file: [.env]
+#     volumes:
+#       - api_storage:/app/.storage
+#     networks:
+#       - medial_internal
+#
+# networks:
+#   medial_internal:
+#     external: true
+#
+# volumes:
+#   api_storage:
+
+# -----------------------------------------------------------------------------
+# 2. Frontend / BFF Repo (/opt/apps/<app_slug>/app/docker-compose.prod.yml)
+# Bridges `vps_edge` (reachable by Caddy+Coraza WAF) and `<app_slug>_internal` (reaches http://medialapi:4000).
+# -----------------------------------------------------------------------------
+services:
+  medialapp:
+    image: ghcr.io/your-org/medialapp:latest
+    container_name: medialapp
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - vps_edge
+      - medial_internal
+
+networks:
+  vps_edge:
+    external: true
+  medial_internal:
+    external: true

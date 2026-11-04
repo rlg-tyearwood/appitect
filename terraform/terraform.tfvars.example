@@ -1,0 +1,34 @@
+# Copy to terraform.tfvars and populate your values (never commit terraform.tfvars)
+
+linode_token   = "replace-with-linode-personal-access-token"
+app_slug       = "medial"
+environment    = "production"
+linode_region  = "us-east"
+vps_type       = "g6-standard-2" # 4GB RAM, 2 Dedicated/Shared vCPUs
+ssh_public_key = "ssh-ed25519 AAAA... deploy@appitect"
+
+# Restrict SSH to your office/VPN CIDR in production if desired
+ssh_allowed_ipv4 = ["0.0.0.0/0"]
+ssh_allowed_ipv6 = ["::/0"]
+
+# Caddy + Coraza OWASP WAF routing for the dedicated application
+acme_email             = "devops@yourdomain.com"
+app_domain             = "app.yourdomain.com"
+app_upstream_container = "medialapp"
+app_upstream_port      = 3000
+waf_mode               = "On"
+max_body_mb            = 10
+
+# 1Panel configuration (leave password/entrance empty to auto-generate strong secrets)
+panel_port             = 10086
+panel_username         = "paneladmin"
+panel_password         = ""
+panel_entrance         = ""
+enable_panel_subdomain = false
+panel_domain           = ""
+
+# Optional dedicated Linode Managed PostgreSQL 16 cluster
+enable_managed_postgres = true
+postgres_engine_id      = "postgresql/16"
+postgres_node_type      = "g6-nanode-1"
+postgres_cluster_size   = 1
